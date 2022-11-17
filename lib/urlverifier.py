@@ -49,7 +49,7 @@ class urlverifier:
         urls=[]
         while not resultsQueue.empty():
             url = resultsQueue.get()
-            urls.append(":".join(url.split(":")[0:2]))
+            urls.append(url)
 
         self.logger.info("Found "+str(len(urls))+ " valid URL(s).")
         return urls

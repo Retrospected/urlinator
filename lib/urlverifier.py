@@ -3,6 +3,8 @@ import threading
 import queue
 import urllib3
 import urllib3.exceptions
+import ssl, socket
+import OpenSSL.crypto as crypto
 
 queueLock = threading.Lock()
 workQueue = queue.Queue()
@@ -95,6 +97,33 @@ class urlWorker (threading.Thread):
             self.logger.error(e)
             return False
 
+    def check_cn(self, ipport):
+        try:
+            ip = ipport.split(":")[0]
+            port = int(ipport.split(":")[1])
+
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((ip,port))
+
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            s = ctx.wrap_socket(s, server_hostname=ip)
+
+            cert_bin = s.getpeercert(True)
+            x509 = crypto.load_certificate(crypto.FILETYPE_ASN1,cert_bin)
+            cn = x509.get_subject().CN
+            if socket.gethostbyname(cn) == ip:
+                return cn
+            else:
+                return None
+
+        except Exception as e:
+            return None
+    
+
+   
+
     def run(self):
         self.keepRunning = True
         while self.keepRunning:
@@ -106,13 +135,20 @@ class urlWorker (threading.Thread):
                 self.logger.debug("urlWorker "+self.threadid+" checking out: "+ipport)
 
                 if self.check_url("https://"+ipport):
+                    cn = self.check_cn(ipport)
+                    
                     queueLock.acquire()
+
+                    if cn:
+                        resultsQueue.put("https://"+cn+":"+ipport.split(":")[1])
+
                     resultsQueue.put("https://"+ipport)
                     found = True
                     queueLock.release()
                 if self.check_url("http://"+ipport):
                     queueLock.acquire()
                     resultsQueue.put("http://"+ipport)
+
                     found = True
                     queueLock.release()
 
